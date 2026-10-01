@@ -9,6 +9,18 @@
 
 ---
 
+## Why governance matters in multi-agent systems
+
+When a single assistant misbehaves, a person usually notices. In a multi-agent system the effects travel: an agent that has been compromised by a prompt injection, that hallucinates, or that loops on a task keeps talking to the others, and its errors propagate through delegation and shared conversations before anyone sees them. As fleets grow, the question is no longer only *is this agent working?* but also *should this agent still be trusted, and who decided?*
+
+Governance answers that second question. It requires three things that today's agent stacks rarely provide together:
+
+- **A visible, shared decision.** When a guardrail, a Sentinel Agent or an operator restricts an agent, every other component (the conversation convener, the orchestrator, the dashboard, the other agents) must see that decision at once, not be told one by one.
+- **Authority that the agent cannot override.** A compromised agent can report whatever it likes about itself. A quarantine set by a guardrail or an operator must take precedence over the agent's own report, and only an equal or higher authority may lift it.
+- **A record of who did what.** Regulated and high-assurance deployments need evidence of what each agent was doing and who intervened, without storing the content of what agents said.
+
+ASP makes governance part of the state model rather than an afterthought: `normal`, `sandboxed`, `quarantined`, `policy-violation` and `under-review` are states like any other, every event records its `source`, and the status server enforces the precedence of operator and guardrail decisions over self-reports while keeping an append-only history.
+
 ## Why ASP
 
 AI agents are moving from single assistants to systems in which many agents plan, delegate, debate and call tools on each other's behalf. Each agent depends on model providers, tools and budgets that can fail, slow down or run out while the agent is still nominally running. One agent can be watched by hand; a fleet cannot.
