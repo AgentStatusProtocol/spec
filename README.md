@@ -200,4 +200,4 @@ The proposal is described in:
 
 ## License
 
-To be defined by the maintainers before the first release.
+MIT. See [LICENSE](LICENSE).
