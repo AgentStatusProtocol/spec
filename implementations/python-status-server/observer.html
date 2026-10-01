@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASP observer</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1b; --muted:#6b6b66; --line:#e2e1dc; --ok:#1f7a4d; --warn:#b86a00; --bad:#b3261e; --info:#2b5fb3; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161615; --fg:#ecebe6; --muted:#9a9993; --line:#2e2e2b; --ok:#5cc28d; --warn:#e3a441; --bad:#ef7a72; --info:#7aa6ef; } }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:baseline; }
+  h1 { font-size:18px; margin:0; }
+  #conn { color:var(--muted); font-size:13px; }
+  main { display:grid; grid-template-columns: minmax(0,3fr) minmax(0,2fr); gap:24px; padding:24px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .scroll { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--muted); font-size:12px; }
+  .id { color:var(--muted); font-size:11px; font-family:ui-monospace, monospace; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; border:1px solid currentColor; margin:1px 2px 1px 0; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); } .info { color:var(--info); } .muted { color:var(--muted); }
+  #log { list-style:none; margin:0; padding:0; font-size:13px; }
+  #log li { padding:6px 0; border-bottom:1px solid var(--line); }
+  #log time { color:var(--muted); font-family:ui-monospace, monospace; margin-right:8px; }
+  h2 { font-size:14px; margin:0 0 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ASP observer <span class="muted">(illustrative)</span></h1>
+  <span id="conn">connecting…</span>
+</header>
+<main>
+  <section>
+    <h2>Agents</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Agent</th><th>Lifecycle</th><th>Health</th><th>Governance</th><th>Tasks</th><th>Floor</th><th>Last event</th></tr></thead>
+        <tbody id="agents"></tbody>
+      </table>
+    </div>
+  </section>
+  <section>
+    <h2>Event stream <span class="muted">newest first</span></h2>
+    <ul id="log"></ul>
+  </section>
+</main>
+<script>
+const token = new URLSearchParams(location.search).get("token");
+const q = token ? "?token=" + encodeURIComponent(token) : "";
+const agents = {};
+
+const classFor = (dim, value) => {
+  const good = { lifecycle:["online","idle","busy"], health:["healthy"], governance:["normal"] };
+  const bad = ["unreachable","crashed","unhealthy","stalled","quarantined","policy-violation","failed","timed-out","auth-error","dependency-down"];
+  if (bad.includes(value)) return "bad";
+  if ((good[dim] || []).includes(value)) return "ok";
+  if (["completed","has-floor"].includes(value)) return "ok";
+  if (["offline","left","not-joined"].includes(value)) return "muted";
+  return dim === "task" || dim === "floor" ? "info" : "warn";
+};
+const pill = (dim, v) => `<span class="pill ${classFor(dim, v)}">${v}</span>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function render() {
+  const rows = Object.values(agents).sort((a, b) => a.name.localeCompare(b.name)).map(a => {
+    const tasks = Object.entries(a.tasks || {}).map(([id, s]) => pill("task", s) + `<span class="id">${esc(id)}</span>`).join("<br>") || '<span class="muted">none</span>';
+    const floors = Object.entries(a.conversations || {}).map(([id, c]) => pill("floor", c.state) + `<span class="id">${esc(id)}${c.role ? " · " + esc(c.role) : ""}</span>`).join("<br>") || '<span class="muted">none</span>';
+    const peer = a.peerHealth ? `<br><span class="id">peer: ${esc(a.peerHealth.state)}</span>` : "";
+    const stale = a.stale ? ' <span class="id">(stale)</span>' : "";
+    return `<tr>
+      <td>${esc(a.name)}<br><span class="id">${esc(a.agentId)}</span></td>
+      <td>${pill("lifecycle", a.lifecycle)}</td>
+      <td>${pill("health", a.health)}${peer}</td>
+      <td>${pill("governance", a.governance)}<br><span class="id">set by ${esc(a.governanceSetBy)}</span></td>
+      <td>${tasks}${stale}</td>
+      <td>${floors}</td>
+      <td class="id">${a.lastEventAgeSec ?? ""}${a.lastEventAgeSec !== undefined ? " s ago" : ""}</td>
+    </tr>`;
+  });
+  document.getElementById("agents").innerHTML = rows.join("");
+}
+
+function describe(e) {
+  const who = (agents[e.agentId] || {}).name || e.agentId;
+  const src = e.source && e.source !== "self" ? ` <span class="id">set by ${esc(e.source)}</span>` : "";
+  const reason = e.reason ? ` <span class="id">${esc(e.reason)}</span>` : "";
+  if (e.type === "state_change") return `<b>${esc(who)}</b> ${esc(e.dimension)}${e.taskId ? " " + esc(e.taskId) : ""}: ${esc(e.from)} → ${esc(e.to)}${src}${reason}`;
+  if (e.type === "floor_change") return `<b>${esc(who)}</b> floor ${esc(e.conversationId)}: ${esc(e.from)} → ${esc(e.to)}`;
+  return `<b>${esc(who)}</b> ${esc(e.type)}${reason}`;
+}
+
+function log(e) {
+  if (e.type === "heartbeat") return;
+  const li = document.createElement("li");
+  li.innerHTML = `<time>${esc((e.ts || "").slice(11, 19))}</time>${describe(e)}`;
+  const ul = document.getElementById("log");
+  ul.prepend(li);
+  while (ul.children.length > 100) ul.lastChild.remove();
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/v1/agents" + q);
+    if (!res.ok) return;
+    for (const a of await res.json()) agents[a.agentId] = a;
+    render();
+  } catch (err) { /* server not reachable yet */ }
+}
+
+refresh();
+setInterval(refresh, 2000);
+const source = new EventSource("/v1/stream" + q);
+source.onopen = () => document.getElementById("conn").textContent = "live stream connected";
+source.onerror = () => document.getElementById("conn").textContent = "reconnecting…";
+for (const type of ["register", "heartbeat", "state_change", "floor_change", "deregister"]) {
+  source.addEventListener(type, msg => { log(JSON.parse(msg.data)); refresh(); });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "aspVersion": "0.1",
+  "type": "deregister",
+  "eventId": "1a2b3c4d-5e6f-4071-8293-a4b5c6d7e8f9",
+  "seq": 250,
+  "agentId": "urn:agent:example:research-assistant",
+  "reason": "scheduled-shutdown",
+  "ts": "2026-09-22T18:00:00Z"
+}

@@ -1,0 +1,13 @@
+{
+  "aspVersion": "0.1",
+  "type": "state_change",
+  "eventId": "9e8d7c6b-5a49-4382-8170-6f5e4d3c2b1a",
+  "seq": 17,
+  "agentId": "urn:agent:example:summary-writer",
+  "source": "guardrail",
+  "dimension": "governance",
+  "from": "normal",
+  "to": "quarantined",
+  "reason": "suspected-prompt-injection",
+  "ts": "2026-09-22T17:01:58Z"
+}

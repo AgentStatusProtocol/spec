@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AgentStatusProtocol/schemas/asp-event.schema.json",
+  "title": "ASP event (v0.1, non-normative draft)",
+  "description": "Draft JSON Schema for Agent Status Protocol v0.1 events. Non-normative: whether a JSON Schema becomes part of the normative specification is an open issue.",
+  "type": "object",
+  "required": ["aspVersion", "type", "agentId", "eventId", "seq", "ts"],
+  "properties": {
+    "aspVersion": { "type": "string", "pattern": "^0\\.[0-9]+$" },
+    "type": { "enum": ["register", "heartbeat", "state_change", "floor_change", "deregister"] },
+    "agentId": { "type": "string", "minLength": 1 },
+    "eventId": { "type": "string", "minLength": 1 },
+    "seq": { "type": "integer", "minimum": 0 },
+    "ts": { "type": "string", "format": "date-time" },
+    "source": { "enum": ["self", "supervisor", "guardrail", "operator", "peer", "server"], "default": "self" },
+    "reason": { "type": "string", "maxLength": 256 },
+    "ext": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "register" } } },
+      "then": {
+        "required": ["heartbeatIntervalSec"],
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "protocols": { "type": "array", "items": { "type": "string" } },
+          "capabilities": { "type": "array", "items": { "type": "string" } },
+          "heartbeatIntervalSec": { "type": "integer", "minimum": 1, "maximum": 300 },
+          "stallAfterSec": { "type": "integer", "minimum": 1 },
+          "healthUrl": { "type": "string", "format": "uri" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "heartbeat" } } },
+      "then": {
+        "properties": {
+          "lifecycle": { "$ref": "#/$defs/lifecycle" },
+          "health": { "$ref": "#/$defs/health" },
+          "progressSeq": { "type": "integer", "minimum": 0 },
+          "activity": { "type": "string" },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "latencyMs": { "type": "number" },
+              "queueDepth": { "type": "integer" },
+              "activeTasks": { "type": "integer" },
+              "maxConcurrentTasks": { "type": "integer" },
+              "tokensIn": { "type": "integer" },
+              "tokensOut": { "type": "integer" },
+              "costUsd": { "type": "number" },
+              "errorRate": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "state_change" } } },
+      "then": {
+        "required": ["dimension", "from", "to"],
+        "properties": {
+          "dimension": { "enum": ["lifecycle", "health", "task", "governance"] },
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "taskId": { "type": "string" },
+          "contextId": { "type": "string" },
+          "maxDurationSec": { "type": "integer", "minimum": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "dimension": { "const": "task" } } },
+            "then": { "required": ["taskId"], "properties": { "from": { "$ref": "#/$defs/task" }, "to": { "$ref": "#/$defs/task" } } }
+          },
+          {
+            "if": { "properties": { "dimension": { "const": "lifecycle" } } },
+            "then": { "properties": { "from": { "$ref": "#/$defs/lifecycle" }, "to": { "$ref": "#/$defs/lifecycle" } } }
+          },
+          {
+            "if": { "properties": { "dimension": { "const": "health" } } },
+            "then": { "properties": { "from": { "$ref": "#/$defs/health" }, "to": { "$ref": "#/$defs/health" } } }
+          },
+          {
+            "if": { "properties": { "dimension": { "const": "governance" } } },
+            "then": { "properties": { "from": { "$ref": "#/$defs/governance" }, "to": { "$ref": "#/$defs/governance" } } }
+          }
+        ]
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "floor_change" } } },
+      "then": {
+        "required": ["conversationId", "from", "to"],
+        "properties": {
+          "conversationId": { "type": "string" },
+          "from": { "$ref": "#/$defs/floor" },
+          "to": { "$ref": "#/$defs/floor" },
+          "role": { "type": "string" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "custom": { "type": "string", "pattern": "^x-[a-z0-9-]+$" },
+    "lifecycle": {
+      "anyOf": [
+        { "enum": ["registering", "initializing", "online", "idle", "busy", "at-capacity", "paused", "draining", "stopping", "offline", "unreachable", "crashed"] },
+        { "$ref": "#/$defs/custom" }
+      ]
+    },
+    "health": {
+      "anyOf": [
+        { "enum": ["healthy", "degraded", "rate-limited", "quota-exhausted", "dependency-down", "auth-error", "overloaded", "unhealthy", "stalled"] },
+        { "$ref": "#/$defs/custom" }
+      ]
+    },
+    "task": {
+      "anyOf": [
+        { "enum": ["submitted", "queued", "working", "input-required", "auth-required", "awaiting-approval", "delegated", "retrying", "completed", "failed", "canceled", "rejected", "timed-out", "unknown"] },
+        { "$ref": "#/$defs/custom" }
+      ]
+    },
+    "floor": {
+      "anyOf": [
+        { "enum": ["not-joined", "invited", "joined", "requesting-floor", "has-floor", "yielded", "floor-revoked", "left"] },
+        { "$ref": "#/$defs/custom" }
+      ]
+    },
+    "governance": {
+      "anyOf": [
+        { "enum": ["normal", "sandboxed", "quarantined", "policy-violation", "under-review"] },
+        { "$ref": "#/$defs/custom" }
+      ]
+    }
+  }
+}

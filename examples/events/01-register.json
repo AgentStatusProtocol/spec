@@ -1,0 +1,20 @@
+{
+  "aspVersion": "0.1",
+  "type": "register",
+  "eventId": "5f0c2e1a-7b3d-4c9e-9a41-2d8e6b1f0a77",
+  "seq": 1,
+  "agentId": "urn:agent:example:research-assistant",
+  "name": "Research Assistant",
+  "version": "1.2.0",
+  "protocols": [
+    "a2a",
+    "ofp"
+  ],
+  "capabilities": [
+    "web-research",
+    "summarization"
+  ],
+  "heartbeatIntervalSec": 10,
+  "stallAfterSec": 120,
+  "ts": "2026-09-22T17:00:00Z"
+}

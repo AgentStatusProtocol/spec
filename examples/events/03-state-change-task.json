@@ -1,0 +1,14 @@
+{
+  "aspVersion": "0.1",
+  "type": "state_change",
+  "eventId": "7c1e4b0a-2f7d-4d1e-9a51-3b8f6c2d9e10",
+  "seq": 3,
+  "agentId": "urn:agent:example:research-assistant",
+  "dimension": "task",
+  "from": "working",
+  "to": "input-required",
+  "taskId": "t-8812",
+  "contextId": "ctx-301",
+  "reason": "clarification-needed: time period",
+  "ts": "2026-09-22T17:02:11Z"
+}
