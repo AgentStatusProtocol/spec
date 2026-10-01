@@ -1,3 +1,5 @@
+![Agent Status Protocol](assets/asp-banner.png)
+
 # Agent Status Protocol (ASP)
 
 **A lightweight, protocol-neutral proposal for reporting and observing the state of AI agents in multi-agent systems.**
