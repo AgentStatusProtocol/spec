@@ -258,6 +258,14 @@ def snapshot(agent):
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def handle(self):
+        # The observer page keeps HTTP/1.1 sockets open and then resets them.
+        # That is a disconnect, not a server failure.
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+
     def log_message(self, fmt, *args):
         pass
 
@@ -273,6 +281,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(data)
 
@@ -307,6 +316,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(page)))
+            self.send_header("Connection", "close")
             self.end_headers()
             return self.wfile.write(page)
         if not self.authorised():
@@ -348,9 +358,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(b": keep-alive\n\n")
                 self.wfile.flush()
                 time.sleep(0.5)
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass
         finally:
+            self.close_connection = True
             with lock:
                 subscribers.remove(queue)
 
