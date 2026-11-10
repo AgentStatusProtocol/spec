@@ -60,8 +60,8 @@ const classFor = (dim, value) => {
   if (["offline","left","not-joined"].includes(value)) return "muted";
   return dim === "task" || dim === "floor" ? "info" : "warn";
 };
-const pill = (dim, v) => `<span class="pill ${classFor(dim, v)}">${v}</span>`;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pill = (dim, v) => `<span class="pill ${classFor(dim, v)}">${esc(v)}</span>`;
 
 function render() {
   const rows = Object.values(agents).sort((a, b) => a.name.localeCompare(b.name)).map(a => {
@@ -76,7 +76,7 @@ function render() {
       <td>${pill("governance", a.governance)}<br><span class="id">set by ${esc(a.governanceSetBy)}</span></td>
       <td>${tasks}${stale}</td>
       <td>${floors}</td>
-      <td class="id">${a.lastEventAgeSec ?? ""}${a.lastEventAgeSec !== undefined ? " s ago" : ""}</td>
+      <td class="id">${esc(a.lastEventAgeSec ?? "")}${a.lastEventAgeSec !== undefined ? " s ago" : ""}</td>
     </tr>`;
   });
   document.getElementById("agents").innerHTML = rows.join("");

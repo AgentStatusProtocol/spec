@@ -22,6 +22,7 @@ Not implemented: OTLP ingest, active probing, event signing, rate limiting.
 
 import json
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -42,6 +43,22 @@ PROGRESS_TASK_STATES = {"working", "retrying"}
 SERVER_ONLY_STATES = {"unreachable", "stalled"}
 AUTHORITY = {"self": 0, "peer": 0, "supervisor": 1, "guardrail": 2, "operator": 3, "server": 3}
 EVENT_TYPES = {"register", "heartbeat", "state_change", "floor_change", "deregister"}
+
+# State vocabulary of the v0.1 draft (see schemas/asp-event.schema.json). A value
+# outside these sets is accepted only when it is a custom state: "x-" followed by
+# lowercase letters, digits and hyphens.
+STATE_VALUES = {
+    "lifecycle": {"registering", "initializing", "online", "idle", "busy", "at-capacity", "paused",
+                  "draining", "stopping", "offline", "unreachable", "crashed"},
+    "health": {"healthy", "degraded", "rate-limited", "quota-exhausted", "dependency-down",
+               "auth-error", "overloaded", "unhealthy", "stalled"},
+    "task": {"submitted", "queued", "working", "input-required", "auth-required", "awaiting-approval",
+             "delegated", "retrying", "completed", "failed", "canceled", "rejected", "timed-out", "unknown"},
+    "floor": {"not-joined", "invited", "joined", "requesting-floor", "has-floor", "yielded",
+              "floor-revoked", "left"},
+    "governance": {"normal", "sandboxed", "quarantined", "policy-violation", "under-review"},
+}
+CUSTOM_STATE = re.compile(r"x-[a-z0-9-]{1,62}")
 
 lock = threading.Lock()
 agents = {}
@@ -97,7 +114,16 @@ def new_agent(event):
     }
 
 
+def check_state(dimension, value, field):
+    """Reject a state value that is neither in the vocabulary nor a custom x- state."""
+    if isinstance(value, str) and (value in STATE_VALUES[dimension] or CUSTOM_STATE.fullmatch(value)):
+        return
+    raise Rejected(400, f"invalid {dimension} value in {field}")
+
+
 def validate(event):
+    if not isinstance(event, dict):
+        raise Rejected(400, "an event must be a JSON object")
     for field in ("aspVersion", "type", "agentId", "eventId", "seq", "ts"):
         if field not in event:
             raise Rejected(400, f"missing field: {field}")
@@ -110,16 +136,24 @@ def validate(event):
         interval = event.get("heartbeatIntervalSec")
         if not isinstance(interval, int) or not 1 <= interval <= 300:
             raise Rejected(400, "heartbeatIntervalSec must be an integer between 1 and 300")
+    if event["type"] == "heartbeat":
+        for dimension in ("lifecycle", "health"):
+            if dimension in event:
+                check_state(dimension, event[dimension], dimension)
     if event["type"] == "state_change":
         for field in ("dimension", "from", "to"):
             if field not in event:
                 raise Rejected(400, f"missing field: {field}")
+        if event["dimension"] not in ("lifecycle", "health", "task", "governance"):
+            raise Rejected(400, "unknown dimension")
         if event["dimension"] == "task" and "taskId" not in event:
             raise Rejected(400, "taskId is required for the task dimension")
+        check_state(event["dimension"], event["to"], "to")
     if event["type"] == "floor_change":
         for field in ("conversationId", "from", "to"):
             if field not in event:
                 raise Rejected(400, f"missing field: {field}")
+        check_state("floor", event["to"], "to")
     reported = {event.get("lifecycle"), event.get("health"), event.get("to")}
     if source == "self" and reported & SERVER_ONLY_STATES:
         raise Rejected(400, "unreachable and stalled are server-assigned")
