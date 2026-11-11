@@ -13,10 +13,10 @@
   #conn { color:var(--muted); font-size:13px; }
   .status { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
   #auth { display:flex; gap:6px; }
-  #auth[hidden], #forget[hidden] { display:none; }
-  #auth input, #auth button, #forget { font:inherit; font-size:13px; padding:3px 8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
+  #auth[hidden], #forget[hidden], #clear[hidden] { display:none; }
+  #auth input, #auth button, #forget, #clear { font:inherit; font-size:13px; padding:3px 8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
   #auth input { width:220px; }
-  #auth button, #forget { cursor:pointer; }
+  #auth button, #forget, #clear { cursor:pointer; }
   main { display:grid; grid-template-columns: minmax(0,3fr) minmax(0,2fr); gap:24px; padding:24px; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
   .scroll { overflow-x:auto; }
@@ -41,6 +41,7 @@
       <button type="submit">Connect</button>
     </form>
     <span id="conn">connecting…</span>
+    <button id="clear" type="button" hidden title="Remove offline, unreachable and crashed agents, and the event history">Clear</button>
     <button id="forget" type="button" hidden>Forget token</button>
   </div>
 </header>
@@ -141,6 +142,7 @@ function askForToken(message) {
   el("log").replaceChildren();
   el("conn").textContent = message;
   el("forget").hidden = true;
+  el("clear").hidden = true;
   el("auth").hidden = false;
   el("tok").focus();
 }
@@ -166,7 +168,9 @@ function handleBlock(block) {
   }
   if (!data) return;
   if (id) lastEventId = id;
-  log(JSON.parse(data));
+  const event = JSON.parse(data);
+  if (event.type === "reset") el("log").replaceChildren();
+  else log(event);
   refresh();
 }
 
@@ -184,6 +188,7 @@ async function stream() {
     if (!res.ok || !res.body) throw new Error("stream unavailable");
     el("conn").textContent = "live stream connected";
     el("forget").hidden = !token;
+    el("clear").hidden = false;
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -221,6 +226,14 @@ el("auth").addEventListener("submit", event => {
   start();
 });
 el("forget").addEventListener("click", () => askForToken("token required"));
+el("clear").addEventListener("click", async () => {
+  if (!confirm("Remove offline, unreachable and crashed agents, and the event history, for everyone watching?")) return;
+  try {
+    const res = await fetch("/v1/admin:clear", { method: "POST", headers: authHeaders() });
+    if (res.status === 401) return askForToken("token not accepted");
+    if (!res.ok) throw new Error(res.status);
+  } catch (err) { el("conn").textContent = "clear failed"; }
+});
 
 start();
 setInterval(refresh, 2000);

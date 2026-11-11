@@ -10,6 +10,7 @@ Implemented:
   GET  /v1/agents, GET /v1/agents/{agentId}     snapshot
   GET  /v1/stream[?agentId=...]                 SSE, with Last-Event-ID replay
   GET  /                                        live observer page
+  POST /v1/admin:clear                          drop inactive agents and the event history
   - register-before-anything (409), eventId deduplication, seq ordering per sender
   - heartbeat timeout (2.5 x declared interval) -> lifecycle "unreachable"
   - progress detection (stallAfterSec + progressSeq) -> health "stalled"
@@ -87,6 +88,28 @@ def publish(event):
     history.append(item)
     for queue in list(subscribers):
         queue.append(item)
+
+
+INACTIVE_LIFECYCLE = {"offline", "unreachable", "crashed"}
+
+
+def clear():
+    """Drop agents that are no longer running and the event history.
+
+    Running agents are kept, so they can go on reporting without registering again.
+    Open observers receive a "reset" message and clear their view.
+    """
+    global server_seq
+    with lock:
+        removed = [agent_id for agent_id, agent in agents.items() if agent["lifecycle"] in INACTIVE_LIFECYCLE]
+        for agent_id in removed:
+            del agents[agent_id]
+        history.clear()
+        server_seq += 1
+        item = (server_seq, {"type": "reset", "ts": now_iso()})
+        for queue in list(subscribers):
+            queue.append(item)
+    return {"removedAgents": len(removed), "keptAgents": len(agents)}
 
 
 def new_agent(event):
@@ -323,6 +346,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorised():
             return self.send_json(401, {"error": "unauthorized"})
         path = urlparse(self.path).path
+        if path == "/v1/admin:clear":
+            return self.send_json(200, clear())
         length = int(self.headers.get("Content-Length", "0"))
         if length > MAX_EVENT_BYTES * (50 if path.endswith(":batch") else 1):
             return self.send_json(413, {"error": "event too large"})

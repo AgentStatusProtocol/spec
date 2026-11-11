@@ -10,12 +10,13 @@ python3 server.py
 
 Then open http://127.0.0.1:8080 for the live observer page.
 
-Environment variables: `ASP_HOST` (default `127.0.0.1`), `ASP_PORT` (default `8080`) and `ASP_TOKEN`. When `ASP_TOKEN` is set, every API request must carry `Authorization: Bearer <token>`; the observer page accepts it as `?token=<token>`.
+Environment variables: `ASP_HOST` (default `127.0.0.1`), `ASP_PORT` (default `8080`) and `ASP_TOKEN`. When `ASP_TOKEN` is set, every API request must carry `Authorization: Bearer <token>`; the observer page asks for it and sends it in the header (a `?token=<token>` link still works once and is then removed from the address bar).
 
 ## What it implements
 
 - Ingest: `POST /v1/events` and `POST /v1/events:batch`, with the response codes of the proposal (202, 400, 401, 409).
 - Distribution: `GET /v1/agents`, `GET /v1/agents/{agentId}` and the SSE stream `GET /v1/stream`, with `Last-Event-ID` replay and an optional `agentId` filter.
+- Housekeeping: `POST /v1/admin:clear` (also the Clear button on the observer page) removes offline, unreachable and crashed agents and the event history. Running agents are kept. It is not part of the proposal.
 - `register` required before any other event; `eventId` deduplication; `seq` ordering per agent and per sender.
 - Heartbeat timeout: no event from the agent itself within 2.5 declared intervals sets `unreachable`, and last known tasks are marked stale.
 - Progress: when `stallAfterSec` is declared and `progressSeq` stops increasing while a task is `working` or `retrying`, health becomes `stalled`.
