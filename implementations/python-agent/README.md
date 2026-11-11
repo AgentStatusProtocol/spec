@@ -28,4 +28,16 @@ Options:
 - Lifecycle `idle` when there is no task and `at-capacity` while its single task runs, since this agent handles one task at a time.
 - `deregister` on `Ctrl+C`.
 
+## Change an agent's governance
+
+`governance.py` acts as an operator. Without arguments it lists the agents; with an agent id and a state it changes that agent's governance:
+
+```bash
+python3 governance.py
+python3 governance.py urn:agent:example:research-assistant quarantined
+python3 governance.py urn:agent:example:research-assistant normal
+```
+
+States: `normal`, `sandboxed`, `quarantined`, `policy-violation`, `under-review`. It takes `--server` and `--token` like the agent. The example agent does not read its governance, so it keeps working; only what the server and the observer report changes.
+
 `AspClient` in `agent.py` is a small reusable client, also used by the stateless adapter example.
