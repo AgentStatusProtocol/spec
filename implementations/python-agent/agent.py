@@ -16,11 +16,30 @@ import argparse
 import json
 import os
 import random
+import subprocess
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+KEYCHAIN_SERVICE = "asp-token"
+
+
+def default_token():
+    """Bearer token from ASP_TOKEN or, on macOS, from the Keychain item named asp-token."""
+    token = os.environ.get("ASP_TOKEN")
+    if token:
+        return token
+    if sys.platform != "darwin":
+        return None
+    try:
+        result = subprocess.run(["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+                                capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() or None if result.returncode == 0 else None
 
 
 class AspClient:
@@ -59,7 +78,7 @@ class AspClient:
 def main():
     parser = argparse.ArgumentParser(description="Illustrative ASP agent")
     parser.add_argument("--server", default=os.environ.get("ASP_SERVER", "http://127.0.0.1:8080"))
-    parser.add_argument("--token", default=os.environ.get("ASP_TOKEN"))
+    parser.add_argument("--token", help="bearer token; default: ASP_TOKEN, then the macOS Keychain item asp-token")
     parser.add_argument("--id", default="urn:agent:example:research-assistant")
     parser.add_argument("--name", default="Research Assistant")
     parser.add_argument("--interval", type=int, default=5, help="heartbeat interval in seconds")
@@ -68,7 +87,7 @@ def main():
     parser.add_argument("--crash-after", type=int, default=0, help="exit abruptly after N seconds, without deregister")
     args = parser.parse_args()
 
-    asp = AspClient(args.server, args.id, args.token)
+    asp = AspClient(args.server, args.id, args.token or default_token())
     asp.send("register", name=args.name, version="0.1.0", protocols=["a2a"],
              capabilities=["summarization"], heartbeatIntervalSec=args.interval,
              stallAfterSec=args.stall_after)

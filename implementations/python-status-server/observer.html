@@ -11,6 +11,12 @@
   header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:baseline; }
   h1 { font-size:18px; margin:0; }
   #conn { color:var(--muted); font-size:13px; }
+  .status { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
+  #auth { display:flex; gap:6px; }
+  #auth[hidden], #forget[hidden] { display:none; }
+  #auth input, #auth button, #forget { font:inherit; font-size:13px; padding:3px 8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
+  #auth input { width:220px; }
+  #auth button, #forget { cursor:pointer; }
   main { display:grid; grid-template-columns: minmax(0,3fr) minmax(0,2fr); gap:24px; padding:24px; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
   .scroll { overflow-x:auto; }
@@ -29,7 +35,14 @@
 <body>
 <header>
   <h1>ASP observer <span class="muted">(illustrative)</span></h1>
-  <span id="conn">connecting…</span>
+  <div class="status">
+    <form id="auth" hidden>
+      <input id="tok" type="password" placeholder="ASP token" aria-label="ASP token" autocomplete="off" required>
+      <button type="submit">Connect</button>
+    </form>
+    <span id="conn">connecting…</span>
+    <button id="forget" type="button" hidden>Forget token</button>
+  </div>
 </header>
 <main>
   <section>
@@ -47,9 +60,26 @@
   </section>
 </main>
 <script>
-const token = new URLSearchParams(location.search).get("token");
-const q = token ? "?token=" + encodeURIComponent(token) : "";
-const agents = {};
+// The token is sent in the Authorization header and kept only for this browser tab.
+// A token passed as ?token= is accepted once and then removed from the address bar.
+const TOKEN_KEY = "asp-token";
+const store = {
+  get() { try { return sessionStorage.getItem(TOKEN_KEY); } catch (err) { return null; } },
+  set(value) { try { value ? sessionStorage.setItem(TOKEN_KEY, value) : sessionStorage.removeItem(TOKEN_KEY); } catch (err) { /* memory only */ } },
+};
+const params = new URLSearchParams(location.search);
+let token = params.get("token") || store.get();
+if (params.has("token")) {
+  store.set(token);
+  params.delete("token");
+  history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "") + location.hash);
+}
+const authHeaders = () => (token ? { Authorization: "Bearer " + token } : {});
+const el = id => document.getElementById(id);
+let agents = {};
+let waitingForToken = false;
+let controller = null;
+let lastEventId = "0";
 
 const classFor = (dim, value) => {
   const good = { lifecycle:["online","idle","busy"], health:["healthy"], governance:["normal"] };
@@ -100,23 +130,94 @@ function log(e) {
   while (ul.children.length > 100) ul.lastChild.remove();
 }
 
+function askForToken(message) {
+  if (waitingForToken) return;
+  waitingForToken = true;
+  if (controller) controller.abort();
+  token = null;
+  store.set(null);
+  agents = {};
+  render();
+  el("log").replaceChildren();
+  el("conn").textContent = message;
+  el("forget").hidden = true;
+  el("auth").hidden = false;
+  el("tok").focus();
+}
+
 async function refresh() {
+  if (waitingForToken) return;
   try {
-    const res = await fetch("/v1/agents" + q);
+    const res = await fetch("/v1/agents", { headers: authHeaders() });
+    if (res.status === 401) return askForToken(token ? "token not accepted" : "token required");
     if (!res.ok) return;
     for (const a of await res.json()) agents[a.agentId] = a;
     render();
   } catch (err) { /* server not reachable yet */ }
 }
 
-refresh();
-setInterval(refresh, 2000);
-const source = new EventSource("/v1/stream" + q);
-source.onopen = () => document.getElementById("conn").textContent = "live stream connected";
-source.onerror = () => document.getElementById("conn").textContent = "reconnecting…";
-for (const type of ["register", "heartbeat", "state_change", "floor_change", "deregister"]) {
-  source.addEventListener(type, msg => { log(JSON.parse(msg.data)); refresh(); });
+function handleBlock(block) {
+  let id = null, data = "";
+  for (const line of block.split("\n")) {
+    if (line.startsWith("id:")) id = line.slice(3).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  if (!data) return;
+  if (id) lastEventId = id;
+  log(JSON.parse(data));
+  refresh();
 }
+
+// The stream is read with fetch, not EventSource, because EventSource cannot send headers.
+async function stream() {
+  if (controller) controller.abort();
+  const current = controller = new AbortController();
+  try {
+    const res = await fetch("/v1/stream", { headers: { ...authHeaders(), "Last-Event-ID": lastEventId }, signal: current.signal });
+    if (res.status === 401) return askForToken(token ? "token not accepted" : "token required");
+    if (!res.ok || !res.body) throw new Error("stream unavailable");
+    el("conn").textContent = "live stream connected";
+    el("forget").hidden = !token;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let end;
+      while ((end = buffer.indexOf("\n\n")) >= 0) {
+        handleBlock(buffer.slice(0, end));
+        buffer = buffer.slice(end + 2);
+      }
+    }
+  } catch (err) { /* aborted, or the connection dropped */ }
+  if (current.signal.aborted || waitingForToken) return;
+  el("conn").textContent = "reconnecting…";
+  setTimeout(() => { if (controller === current) stream(); }, 2000);
+}
+
+function start() {
+  waitingForToken = false;
+  lastEventId = "0";
+  el("auth").hidden = true;
+  el("conn").textContent = "connecting…";
+  refresh();
+  stream();
+}
+
+el("auth").addEventListener("submit", event => {
+  event.preventDefault();
+  token = el("tok").value.trim();
+  el("tok").value = "";
+  if (!token) return;
+  store.set(token);
+  start();
+});
+el("forget").addEventListener("click", () => askForToken("token required"));
+
+start();
+setInterval(refresh, 2000);
 </script>
 </body>
 </html>

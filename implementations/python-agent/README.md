@@ -19,7 +19,7 @@ Options:
 | `--stall-after N` | Declared `stallAfterSec` (default 20) |
 | `--stall` | Keeps sending heartbeats but stops making progress, to trigger `stalled` |
 | `--crash-after N` | Exits abruptly after N seconds without `deregister`, to trigger `unreachable` |
-| `--server`, `--token` | Status server URL and bearer token (also `ASP_SERVER`, `ASP_TOKEN`) |
+| `--server`, `--token` | Status server URL and bearer token (also `ASP_SERVER`, `ASP_TOKEN`). Without `--token` and `ASP_TOKEN`, on macOS the token is read from the Keychain item `asp-token` |
 
 ## What it shows
 

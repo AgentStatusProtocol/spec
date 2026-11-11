@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-agent"))
-from agent import AspClient  # noqa: E402
+from agent import AspClient, default_token  # noqa: E402
 
 
 def handle(request):
@@ -85,13 +85,13 @@ class Adapter:
 def main():
     parser = argparse.ArgumentParser(description="Illustrative ASP adapter for a stateless agent")
     parser.add_argument("--server", default=os.environ.get("ASP_SERVER", "http://127.0.0.1:8080"))
-    parser.add_argument("--token", default=os.environ.get("ASP_TOKEN"))
+    parser.add_argument("--token", help="bearer token; default: ASP_TOKEN, then the macOS Keychain item asp-token")
     parser.add_argument("--id", default="urn:agent:example:summarizer-fn")
     parser.add_argument("--interval", type=int, default=5)
     parser.add_argument("--max-instances", type=int, default=3)
     args = parser.parse_args()
 
-    asp = AspClient(args.server, args.id, args.token)
+    asp = AspClient(args.server, args.id, args.token or default_token())
     asp.send("register", name="Summarizer (stateless)", version="0.1.0", protocols=["a2a"],
              capabilities=["summarization"], heartbeatIntervalSec=args.interval)
     adapter = Adapter(asp, args.max_instances)
