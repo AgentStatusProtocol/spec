@@ -151,7 +151,9 @@ async function refresh() {
     const res = await fetch("/v1/agents", { headers: authHeaders() });
     if (res.status === 401) return askForToken(token ? "token not accepted" : "token required");
     if (!res.ok) return;
-    for (const a of await res.json()) agents[a.agentId] = a;
+    const fresh = {};
+    for (const a of await res.json()) fresh[a.agentId] = a;
+    agents = fresh;
     render();
   } catch (err) { /* server not reachable yet */ }
 }
@@ -172,6 +174,10 @@ function handleBlock(block) {
 async function stream() {
   if (controller) controller.abort();
   const current = controller = new AbortController();
+  // Replay the whole history on every connection: after a server restart the
+  // event ids start again from 1, so an old cursor would hide the new events.
+  lastEventId = "0";
+  el("log").replaceChildren();
   try {
     const res = await fetch("/v1/stream", { headers: { ...authHeaders(), "Last-Event-ID": lastEventId }, signal: current.signal });
     if (res.status === 401) return askForToken(token ? "token not accepted" : "token required");
